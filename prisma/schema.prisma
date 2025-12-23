@@ -1,0 +1,536 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== ENUMS ==============
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_UPDATED
+  TASK_COMPLETED
+  TASK_COMMENTED
+  PROJECT_INVITATION
+  MENTION
+  DEADLINE_REMINDER
+  CHAT_MESSAGE
+}
+
+enum ActivityType {
+  CREATED
+  UPDATED
+  DELETED
+  ASSIGNED
+  UNASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  COMMENTED
+  ATTACHED_FILE
+  MOVED
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+}
+
+// ============== MODELS ==============
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  firstName     String
+  lastName      String
+  avatar        String?
+  phone         String?
+  isActive      Boolean   @default(true)
+  isVerified    Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Track last active organization
+  currentOrganizationId String?
+
+  // Relations
+  ownedProjects           Project[]                @relation("ProjectOwner")
+  projectMembers          ProjectMember[]
+  assignedTasks           TaskAssignee[]
+  createdTasks            Task[]                   @relation("TaskCreator")
+  comments                Comment[]
+  attachments             Attachment[]
+  activities              Activity[]
+  notifications           Notification[]
+  sentInvitations         Invitation[]             @relation("InvitationSender")
+  refreshTokens           RefreshToken[]
+  sentMessages            ChatMessage[]            @relation("MessageSender")
+  chatParticipants        ChatParticipant[]
+  taskSchedules           TaskSchedule[]           @relation("ScheduleCreator")
+  organizationMembers     OrganizationMember[]
+  orgInvitationsSent      OrganizationInvitation[] @relation("OrgInvitationSender")
+
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  name           String
+  description    String?
+  key            String        @unique // e.g., "PROJ" for PROJ-123 task IDs
+  color          String        @default("#3b82f6")
+  status         ProjectStatus @default(ACTIVE)
+  startDate      DateTime?
+  endDate        DateTime?
+  ownerId        String
+  organizationId String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  owner        User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      ProjectMember[]
+  tasks        Task[]
+  boards       Board[]
+  invitations  Invitation[]
+  chatRooms    ChatRoom[]
+  labels       Label[]
+
+  @@index([ownerId])
+  @@index([organizationId])
+  @@index([key])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  role      Role     @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model Board {
+  id        String   @id @default(uuid())
+  name      String
+  projectId String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  columns BoardColumn[]
+
+  @@index([projectId])
+  @@map("boards")
+}
+
+model BoardColumn {
+  id        String     @id @default(uuid())
+  name      String
+  boardId   String
+  status    TaskStatus
+  order     Int        @default(0)
+  color     String     @default("#6b7280")
+  wipLimit  Int?       // Work in progress limit
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([boardId])
+  @@map("board_columns")
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  taskNumber  Int          // Auto-increment per project
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  projectId   String
+  columnId    String?
+  parentId    String?      // For subtasks
+  creatorId   String
+  dueDate     DateTime?
+  startDate   DateTime?
+  estimatedHours Float?
+  actualHours    Float?
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  column      BoardColumn?   @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  parent      Task?          @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]         @relation("Subtasks")
+  creator     User           @relation("TaskCreator", fields: [creatorId], references: [id])
+  assignees   TaskAssignee[]
+  comments    Comment[]
+  attachments Attachment[]
+  activities  Activity[]
+  labels      TaskLabel[]
+  schedules   TaskSchedule[]
+
+  @@unique([projectId, taskNumber])
+  @@index([projectId])
+  @@index([columnId])
+  @@index([creatorId])
+  @@index([status])
+  @@index([priority])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id         String   @id @default(uuid())
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+  @@map("task_assignees")
+}
+
+model Label {
+  id        String   @id @default(uuid())
+  name      String
+  color     String
+  projectId String
+  createdAt DateTime @default(now())
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   TaskLabel[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@map("labels")
+}
+
+model TaskLabel {
+  id      String @id @default(uuid())
+  taskId  String
+  labelId String
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, labelId])
+  @@map("task_labels")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  taskId    String
+  userId    String
+  parentId  String?  // For nested comments
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task    Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([taskId])
+  @@index([userId])
+  @@map("comments")
+}
+
+model Attachment {
+  id           String   @id @default(uuid())
+  fileName     String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+  taskId       String
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id])
+
+  @@index([taskId])
+  @@map("attachments")
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  type        ActivityType
+  description String
+  taskId      String?
+  userId      String
+  metadata    Json?        // Store additional data
+  createdAt   DateTime     @default(now())
+
+  task Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+model Invitation {
+  id        String           @id @default(uuid())
+  email     String
+  projectId String
+  role      Role             @default(MEMBER)
+  token     String           @unique
+  status    InvitationStatus @default(PENDING)
+  senderId  String
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sender  User    @relation("InvitationSender", fields: [senderId], references: [id])
+
+  @@index([email])
+  @@index([projectId])
+  @@index([token])
+  @@map("invitations")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  userId    String
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model ChatRoom {
+  id          String   @id @default(uuid())
+  name        String?
+  projectId   String?
+  isGroup     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@index([projectId])
+  @@map("chat_rooms")
+}
+
+model ChatParticipant {
+  id         String   @id @default(uuid())
+  chatRoomId String
+  userId     String
+  joinedAt   DateTime @default(now())
+  lastReadAt DateTime @default(now())
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatRoomId, userId])
+  @@index([chatRoomId])
+  @@index([userId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  content    String
+  chatRoomId String
+  senderId   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender   User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatRoomId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+model TaskSchedule {
+  id          String   @id @default(uuid())
+  taskId      String
+  cronExpr    String   // Cron expression
+  isActive    Boolean  @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  task      Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy User @relation("ScheduleCreator", fields: [createdById], references: [id])
+
+  @@index([taskId])
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@map("task_schedules")
+}
+
+// ============== ORGANIZATION MODELS ==============
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique // URL-friendly identifier
+  logo        String?
+  description String?
+  website     String?
+  industry    String?
+  size        String?  // 1-10, 11-50, 51-200, 201-500, 500+
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  members     OrganizationMember[]
+  projects    Project[]
+  invitations OrganizationInvitation[]
+  settings    OrganizationSettings?
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(MEMBER)
+  title          String?          // Job title
+  department     String?
+  joinedAt       DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model OrganizationSettings {
+  id                    String  @id @default(uuid())
+  organizationId        String  @unique
+  allowMemberInvites    Boolean @default(false)
+  defaultProjectRole    Role    @default(MEMBER)
+  requireApprovalToJoin Boolean @default(false)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_settings")
+}
+
+model OrganizationInvitation {
+  id             String           @id @default(uuid())
+  email          String
+  organizationId String
+  role           OrganizationRole @default(MEMBER)
+  token          String           @unique @default(uuid())
+  status         InvitationStatus @default(PENDING)
+  senderId       String
+  expiresAt      DateTime
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("OrgInvitationSender", fields: [senderId], references: [id])
+
+  @@unique([email, organizationId])
+  @@index([email])
+  @@index([organizationId])
+  @@index([token])
+  @@map("organization_invitations")
+}
+
