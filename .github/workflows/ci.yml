@@ -31,7 +31,7 @@ jobs:
       - name: Build application
         run: npm run build
         env:
-          DATABASE_URL: "postgresql://eodaskdb_user:SWpA63f37F8GabGDz4L5qDe5ILrIxbcc@dpg-d55vvjmr433s73dskslg-a/eodaskdb"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
