@@ -5,7 +5,17 @@ import { sendSuccess } from '../utils/response.js';
 import type { AuthRequest } from '../types/index.js';
 
 export const register = asyncHandler(async (req: AuthRequest, res: Response) => {
+  console.log('=== REGISTER REQUEST ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+  console.log('invitationToken:', req.body.invitationToken);
+
   const result = await authService.register(req.body);
+
+  console.log('=== REGISTER RESULT ===');
+  console.log('Has organization:', !!result.organization);
+  console.log('Organization:', result.organization);
+  console.log('invitationAccepted:', result.invitationAccepted);
+
   sendSuccess(res, 'Registration successful', result, 201);
 });
 

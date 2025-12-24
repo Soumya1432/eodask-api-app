@@ -20,6 +20,8 @@ const registerSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters').optional(),
     firstName: z.string().min(1).optional(),
     lastName: z.string().optional(),
+    // Optional invitation token for joining an organization during registration
+    invitationToken: z.string().optional(),
   }).refine(
     (data) => data.name || data.firstName,
     { message: 'Either name or firstName is required' }

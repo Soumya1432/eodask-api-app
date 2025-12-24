@@ -13,6 +13,7 @@ interface RegisterData {
   name?: string;
   firstName?: string;
   lastName?: string;
+  invitationToken?: string; // Token from organization invitation
 }
 
 interface LoginData {
@@ -30,6 +31,42 @@ export class AuthService {
       throw ApiError.conflict('Email already registered');
     }
 
+    // If invitation token provided, validate it
+    let invitation = null;
+    if (data.invitationToken) {
+      invitation = await prisma.organizationInvitation.findUnique({
+        where: { token: data.invitationToken },
+        include: {
+          organization: {
+            select: { id: true, name: true, slug: true },
+          },
+        },
+      });
+
+      if (!invitation) {
+        throw ApiError.badRequest('Invalid invitation token');
+      }
+
+      if (invitation.status !== 'PENDING') {
+        throw ApiError.badRequest('Invitation is no longer valid');
+      }
+
+      if (invitation.expiresAt < new Date()) {
+        await prisma.organizationInvitation.update({
+          where: { id: invitation.id },
+          data: { status: 'EXPIRED' },
+        });
+        throw ApiError.badRequest('Invitation has expired');
+      }
+
+      // Verify email matches invitation
+      if (invitation.email !== data.email) {
+        throw ApiError.badRequest(
+          `This invitation was sent to ${invitation.email}. Please register with that email.`
+        );
+      }
+    }
+
     // Handle name or firstName/lastName
     let firstName = data.firstName || '';
     let lastName = data.lastName || '';
@@ -42,6 +79,56 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(data.password, 12);
 
+    // Create user and handle invitation in transaction if needed
+    if (invitation) {
+      // Create user with invitation - automatically add to organization
+      const user = await prisma.user.create({
+        data: {
+          email: data.email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          currentOrganizationId: invitation.organizationId,
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          isActive: true,
+          isVerified: true,
+          createdAt: true,
+          currentOrganizationId: true,
+        },
+      });
+
+      // Add user to organization and accept invitation
+      await prisma.$transaction([
+        prisma.organizationMember.create({
+          data: {
+            organizationId: invitation.organizationId,
+            userId: user.id,
+            role: invitation.role,
+          },
+        }),
+        prisma.organizationInvitation.update({
+          where: { id: invitation.id },
+          data: { status: 'ACCEPTED' },
+        }),
+      ]);
+
+      const tokens = await this.generateTokens(user.id, user.email);
+
+      return {
+        user,
+        ...tokens,
+        organization: invitation.organization,
+        invitationAccepted: true,
+      };
+    }
+
+    // Normal registration without invitation
     const user = await prisma.user.create({
       data: {
         email: data.email,
@@ -205,8 +292,6 @@ export class AuthService {
 
     return user;
   }
-
-
 
   async updateProfile(
     userId: string,
