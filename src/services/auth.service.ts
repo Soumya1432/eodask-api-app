@@ -231,7 +231,7 @@ export class AuthService {
     const payload: JwtPayload = { userId, email, role };
 
     const accessToken = jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
+      expiresIn: config.jwt.expiresIn as jwt.SignOptions['expiresIn'],
     });
 
     const refreshToken = uuidv4();

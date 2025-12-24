@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { fileService } from '../services/file.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/response.js';
@@ -14,31 +14,33 @@ interface MulterFile {
   size: number;
 }
 
-interface MulterRequest extends AuthRequest {
+type MulterRequest = Request & {
   file?: MulterFile;
-  files?: MulterFile[];
-}
+  user?: { id: string; email: string };
+};
 
-export const uploadTaskAttachment = asyncHandler(async (req: MulterRequest, res: Response) => {
-  if (!req.file) {
+export const uploadTaskAttachment = asyncHandler(async (req: Request, res: Response) => {
+  const multerReq = req as MulterRequest;
+  if (!multerReq.file) {
     throw ApiError.badRequest('No file uploaded');
   }
 
   const result = await fileService.uploadTaskAttachment(
-    req.file,
+    multerReq.file,
     req.params.taskId,
-    req.user!.id
+    multerReq.user!.id
   );
 
   sendSuccess(res, 'File uploaded', result, 201);
 });
 
-export const uploadAvatar = asyncHandler(async (req: MulterRequest, res: Response) => {
-  if (!req.file) {
+export const uploadAvatar = asyncHandler(async (req: Request, res: Response) => {
+  const multerReq = req as MulterRequest;
+  if (!multerReq.file) {
     throw ApiError.badRequest('No file uploaded');
   }
 
-  const avatarUrl = await fileService.uploadAvatar(req.file, req.user!.id);
+  const avatarUrl = await fileService.uploadAvatar(multerReq.file, multerReq.user!.id);
   sendSuccess(res, 'Avatar uploaded', { avatar: avatarUrl });
 });
 

@@ -311,7 +311,7 @@ export class ChatService {
     }
 
     // Check if already participant
-    const existing = room.participants.find((p) => p.userId === newParticipantId);
+    const existing = room.participants.find((p:any) => p.userId === newParticipantId);
     if (existing) {
       throw ApiError.conflict('User is already a participant');
     }

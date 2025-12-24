@@ -62,7 +62,7 @@ export const initializeSocket = (httpServer: HttpServer): SocketServer => {
       socket.user = {
         userId: user.id,
         email: user.email,
-        role: decoded.role,
+        role: String(decoded.role ?? 'MEMBER'),
       };
 
       next();
@@ -132,7 +132,7 @@ export const initializeSocket = (httpServer: HttpServer): SocketServer => {
     // Handle joining a project room
     socket.on('project:join', async (projectId: string) => {
       const isMember = await prisma.projectMember.findUnique({
-        where: { userId_projectId: { userId, projectId } },
+        where: { projectId_userId: { userId, projectId } },
       });
 
       if (isMember) {

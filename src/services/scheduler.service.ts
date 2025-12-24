@@ -50,7 +50,7 @@ class SchedulerService {
       include: {
         assignees: {
           include: {
-            user: { select: { id: true, email: true, name: true } },
+            user: { select: { id: true, email: true, firstName: true, lastName: true } },
           },
         },
         project: { select: { id: true, name: true } },
@@ -66,20 +66,20 @@ class SchedulerService {
         await prisma.notification.create({
           data: {
             userId: assignee.user.id,
-            type: 'TASK_OVERDUE',
+            type: 'DEADLINE_REMINDER',
             title: 'Task Overdue',
             message: `Task "${task.title}" in project "${task.project.name}" is overdue.`,
-            data: JSON.stringify({
+            metadata: {
               taskId: task.id,
               projectId: task.projectId,
-            }),
+            },
           },
         });
 
         // Send real-time notification
         if (socketEmitter) {
           socketEmitter.sendNotification(assignee.user.id, {
-            type: 'TASK_OVERDUE',
+            type: 'DEADLINE_REMINDER',
             title: 'Task Overdue',
             message: `Task "${task.title}" is overdue`,
             taskId: task.id,
@@ -93,7 +93,7 @@ class SchedulerService {
   private async sendDailyDigest(): Promise<void> {
     const users = await prisma.user.findMany({
       where: { isActive: true },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, firstName: true, lastName: true },
     });
 
     for (const user of users) {
@@ -172,7 +172,7 @@ class SchedulerService {
       include: {
         assignees: {
           include: {
-            user: { select: { id: true, email: true, name: true } },
+            user: { select: { id: true, email: true, firstName: true, lastName: true } },
           },
         },
         project: { select: { id: true, name: true } },
@@ -183,24 +183,25 @@ class SchedulerService {
 
     for (const task of tasksDueTomorrow) {
       for (const assignee of task.assignees) {
+        const userName = [assignee.user.firstName, assignee.user.lastName].filter(Boolean).join(' ') || 'User';
         // Create notification
         await prisma.notification.create({
           data: {
             userId: assignee.user.id,
-            type: 'TASK_DUE_SOON',
+            type: 'DEADLINE_REMINDER',
             title: 'Task Due Tomorrow',
             message: `Task "${task.title}" in project "${task.project.name}" is due tomorrow.`,
-            data: JSON.stringify({
+            metadata: {
               taskId: task.id,
               projectId: task.projectId,
-            }),
+            },
           },
         });
 
         // Send real-time notification
         if (socketEmitter) {
           socketEmitter.sendNotification(assignee.user.id, {
-            type: 'TASK_DUE_SOON',
+            type: 'DEADLINE_REMINDER',
             title: 'Task Due Tomorrow',
             message: `Task "${task.title}" is due tomorrow`,
             taskId: task.id,
@@ -212,7 +213,7 @@ class SchedulerService {
         try {
           await emailService.sendTaskReminder(
             assignee.user.email,
-            assignee.user.name,
+            userName,
             task.title,
             task.project.name,
             task.dueDate!

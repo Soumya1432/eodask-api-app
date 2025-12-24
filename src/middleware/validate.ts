@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { ApiError } from '../utils/ApiError.js';
 
-export const validate = (schema: z.ZodSchema) => {
+export const validate = <T extends z.ZodTypeAny>(schema: T) => {
   return (req: Request, _res: Response, next: NextFunction): void => {
     try {
       // Parse the entire request object (body, query, params)
@@ -13,8 +13,8 @@ export const validate = (schema: z.ZodSchema) => {
       });
 
       if (!result.success) {
-        const errors = result.error.errors
-          .map((e) => {
+        const errors = result.error.issues
+          .map((e: z.ZodIssue) => {
             const path = e.path.join('.');
             return path ? `${path}: ${e.message}` : e.message;
           })
@@ -23,7 +23,8 @@ export const validate = (schema: z.ZodSchema) => {
       }
 
       // Apply validated data back to request
-      if (result.data.body) req.body = result.data.body;
+      const data = result.data as { body?: unknown };
+      if (data.body) req.body = data.body;
       // Note: req.query and req.params are read-only in some Express versions
       // We only need to validate them, not reassign
 

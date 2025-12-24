@@ -264,7 +264,7 @@ class AnalyticsService {
   async getProjectAnalytics(projectId: string, userId: string) {
     // Verify user has access to this project
     const membership = await prisma.projectMember.findUnique({
-      where: { userId_projectId: { userId, projectId } },
+      where: { projectId_userId: { userId, projectId } },
     });
 
     if (!membership) {

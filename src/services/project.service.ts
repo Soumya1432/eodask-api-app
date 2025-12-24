@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
 import type { ProjectStatus, Role, TaskStatus } from '@prisma/client';
@@ -284,12 +285,14 @@ export class ProjectService {
       }
 
       // Create invitation
+      const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'A team member';
       const invitation = await prisma.invitation.create({
         data: {
           email: memberEmail,
           projectId,
           role,
-          inviterId: userId,
+          senderId: userId,
+          token: uuidv4(),
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         },
         include: {
@@ -300,13 +303,11 @@ export class ProjectService {
       });
 
       // Send invitation email
-      const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'A team member';
       try {
         await emailService.sendInvitation(
           memberEmail,
           project.name,
           senderName,
-          role,
           invitation.token
         );
       } catch (error) {
@@ -341,7 +342,6 @@ export class ProjectService {
     });
 
     // Send notification email to the added member
-    const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'A team member';
     try {
       await emailService.sendTaskAssignmentNotification(
         user.email,
