@@ -28,13 +28,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma Client
-        run: npm run db:generate
-        env:
-          DATABASE_URL: "postgresql://user:password@localhost:5432/dummy"
-
       - name: Build application
         run: npm run build
+        env:
+          DATABASE_URL: "postgresql://eodaskdb_user:SWpA63f37F8GabGDz4L5qDe5ILrIxbcc@dpg-d55vvjmr433s73dskslg-a/eodaskdb"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
