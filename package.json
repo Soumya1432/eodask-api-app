@@ -4,14 +4,14 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-  "dev": "npx --no tsx watch src/index.ts",
-  "build": "npx --no prisma generate && tsc",
-  "start": "npx --no prisma migrate deploy && node dist/index.js",
-  "db:generate": "npx --no prisma generate",
-  "db:push": "npx --no prisma db push",
-  "db:migrate": "npx --no prisma migrate dev",
-  "db:seed": "npx --no tsx prisma/seed.ts",
-  "db:studio": "npx --no prisma studio"
+  "dev": "tsx watch src/index.ts",
+  "build": "./node_modules/.bin/prisma generate && tsc",
+  "start": "./node_modules/.bin/prisma migrate deploy && node dist/index.js",
+  "db:generate": "./node_modules/.bin/prisma generate",
+  "db:push": "./node_modules/.bin/prisma db push",
+  "db:migrate": "./node_modules/.bin/prisma migrate dev",
+  "db:seed": "tsx prisma/seed.ts",
+  "db:studio": "./node_modules/.bin/prisma studio"
 },
   "keywords": [],
   "author": "",
